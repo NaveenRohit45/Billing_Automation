@@ -1,0 +1,6 @@
+pymupdf
+pandas
+openpyxl
+customtkinter
+docx2pdf
+PyPDF2
