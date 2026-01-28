@@ -158,6 +158,8 @@ def run_batch_mode(root_folder):
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
+root_fill = PatternFill("solid", fgColor="D9EAF7")      # Light blue
+subfolder_fill = PatternFill("solid", fgColor="E2F0D9") # Light green
 
 def generate_master_excel(summary_rows, detail_rows, output_folder):
     output = os.path.join(output_folder, "Master_Billing_Report.xlsx")
@@ -213,6 +215,13 @@ def generate_master_excel(summary_rows, detail_rows, output_folder):
                 rdata["Pages with Comments"],
                 rdata["Total Comments"]
             ])
+            current_row = ws.max_row
+
+            # 🎨 Color coding based on Inside Folder
+            fill = root_fill if rdata["Inside Folder"] == "ROOT" else subfolder_fill
+
+            for col in range(1, 9):
+                ws.cell(row=current_row, column=col).fill = fill
 
             if rdata["File Type"] == "DOCX" and rdata["Total Pages"] != "NA":
                 total_docx_pages += int(rdata["Total Pages"])
