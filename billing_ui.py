@@ -55,16 +55,26 @@ def run_process():
     global output_excel
     try:
         set_running_state(True)
+        # 👇 ADD THIS LINE HERE
+        print("MODE:", mode.get())
 
         if mode.get() == "single":
             summary, details = run_single_mode(selected_path.get())
             output_excel = generate_master_excel(
-                summary, details, selected_path.get()
+                summary,
+                details,
+                {},  # ← EMPTY final_draft_pages for single mode
+                selected_path.get()
             )
+
         else:
-            summary, details = run_batch_mode(selected_path.get())
+            summary, details, final_draft_pages = run_batch_mode(selected_path.get())
+
             output_excel = generate_master_excel(
-                summary, details, selected_path.get()
+                summary,
+                details,
+                final_draft_pages,
+                selected_path.get()
             )
 
         status_text.set("✅ Completed successfully")

@@ -1,5 +1,6 @@
 # billing_logic.py
 import os
+import re
 import fitz  # PyMuPDF
 import tempfile
 import shutil
@@ -34,6 +35,46 @@ def find_original_folder(job_path):
             return full
     return None
 
+
+# -------------------------------------------------
+# FIND LATEST FINAL DRAFT PDF PAGES
+# -------------------------------------------------
+def get_latest_final_draft_pages(job_path):
+    final_folder = None
+
+    for name in os.listdir(job_path):
+        if name.lower().startswith("6.final"):
+            final_folder = os.path.join(job_path, name)
+            break
+
+    if not final_folder or not os.path.isdir(final_folder):
+        return ("NA", "NA")
+
+    drafts = []
+
+    for file in os.listdir(final_folder):
+        if not file.lower().endswith(".pdf"):
+            continue
+
+        match = re.search(r"_draft\s*(\d+)([a-z]?)", file.lower())
+        if match:
+            draft_num = int(match.group(1))
+            suffix = match.group(2) or ""
+            drafts.append((draft_num, suffix, file))
+
+    if not drafts:
+        return ("NA", "NA")
+
+    # 🔥 sort by number, then suffix
+    drafts.sort(key=lambda x: (x[0], x[1]))
+
+    latest_num, latest_suffix, latest_file = drafts[-1]
+
+    try:
+        doc = fitz.open(os.path.join(final_folder, latest_file))
+        return (latest_file, len(doc))
+    except Exception:
+        return (latest_file, "NA")
 
 # -------------------------------------------------
 # PROCESS FILES (RECURSIVE)
@@ -116,14 +157,19 @@ def run_single_mode(folder_path):
 def run_batch_mode(root_folder):
     all_summary = []
     all_details = []
+    final_draft_pages = {}
 
     for job in os.listdir(root_folder):
         job_path = os.path.join(root_folder, job)
         if not os.path.isdir(job_path):
             continue
 
+        final_draft_pages[job] = get_latest_final_draft_pages(job_path)
+
+
         original = find_original_folder(job_path)
         if not original:
+            print(f"⚠️ Skipping {job} (Original folder not found)")
             continue
 
         for sub in os.listdir(original):
@@ -134,24 +180,26 @@ def run_batch_mode(root_folder):
             if not os.path.isdir(edits_path):
                 continue
 
+            print(f"✅ Processing: {job} → {sub}")
+
             summary, details = process_folder(edits_path, job, sub)
             all_summary.extend(summary)
             all_details.extend(details)
 
-    return all_summary, all_details
+    return all_summary, all_details, final_draft_pages
 
 
 # -------------------------------------------------
 # EXCEL OUTPUT
 # -------------------------------------------------
-root_fill = PatternFill("solid", fgColor="D9EAF7")       # ROOT = Blue
-subfolder_fill = PatternFill("solid", fgColor="E2F0D9") # Subfolder = Green
+root_fill = PatternFill("solid", fgColor="D9EAF7")
+subfolder_fill = PatternFill("solid", fgColor="E2F0D9")
 header_fill = PatternFill("solid", fgColor="DDDDDD")
 job_fill = PatternFill("solid", fgColor="FFFF00")
 bold_font = Font(bold=True)
 
 
-def generate_master_excel(summary_rows, detail_rows, output_folder):
+def generate_master_excel(summary_rows, detail_rows, final_draft_pages, output_folder):
     output = os.path.join(output_folder, "Master_Billing_Report.xlsx")
 
     wb = Workbook()
@@ -203,7 +251,6 @@ def generate_master_excel(summary_rows, detail_rows, output_folder):
 
             row_idx = ws.max_row
             fill = root_fill if rdata["Inside Folder"] == "ROOT" else subfolder_fill
-
             for c in range(1, 9):
                 ws.cell(row=row_idx, column=c).fill = fill
 
@@ -216,6 +263,7 @@ def generate_master_excel(summary_rows, detail_rows, output_folder):
                 if rdata["Total Comments"] != "NA":
                     total_pdf_comments += int(rdata["Total Comments"])
 
+        # TOTAL ROW
         ws.append([
             "Total",
             "",
@@ -230,6 +278,24 @@ def generate_master_excel(summary_rows, detail_rows, output_folder):
         tr = ws.max_row
         for c in range(1, 9):
             ws.cell(row=tr, column=c).font = bold_font
+
+        # FINAL DRAFT ROW
+        draft_name, draft_pages = final_draft_pages.get(job_name, ("NA", "NA"))
+
+        ws.append([
+            f"Final Draft Total Pages ({draft_name})",
+            "",
+            "",
+            "",
+            "",
+            draft_pages,
+            "",
+            ""
+        ])
+
+        fr = ws.max_row
+        for c in range(1, 9):
+            ws.cell(row=fr, column=c).font = bold_font
 
         ws.append([])
 
